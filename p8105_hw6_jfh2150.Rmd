@@ -1,0 +1,321 @@
+---
+title: "Homework 6"
+author: "Ford Holland"
+date: "11/15/2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(viridis)
+library(modelr)
+library(patchwork)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 6,
+  out.width = "90%"
+)
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+```
+
+## Problem 1
+
+```{r}
+df_birthweight = 
+  read_csv("data/birthweight.csv") %>% 
+  mutate(
+    ft_babysex = factor(babysex, labels = c("male", "female")),
+    ft_frace = factor(frace, labels = c("White", "Black", "Asian", "Puerto Rican", "Other")),
+    ft_malform = factor(malform, labels = c("absent", "present")),
+    ft_mrace = factor(mrace, labels = c("White", "Black", "Asian", "Puerto Rican"))
+  )
+
+df_birthweight %>% count(babysex, ft_babysex)
+df_birthweight %>% count(frace, ft_frace)
+df_birthweight %>% count(malform, ft_malform)
+df_birthweight %>% count(mrace, ft_mrace)
+
+# TODO: check data for NAs, weird values 
+
+df_birthweight %>% count(frace)
+df_birthweight %>% count(mrace)
+
+```
+
+look at relationships
+
+```{r}
+names(df_birthweight)
+
+dist = df_birthweight %>% 
+  mutate(observation = seq.int(nrow(df_birthweight))) %>% 
+  ggplot(aes(x = observation, y = bwt)) +
+  geom_point() + 
+  geom_smooth() +
+  labs(title = "Distrbution of birth weights", y = "birth weight (grams)")
+
+bhead = df_birthweight %>% 
+  ggplot(aes(x = bhead, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+blength = df_birthweight %>% 
+  ggplot(aes(x = blength, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+babysex = df_birthweight %>% 
+  ggplot(aes(x = babysex, y = bwt, group = babysex)) +
+  geom_boxplot() +
+  geom_smooth()
+
+delwt = df_birthweight %>% 
+  ggplot(aes(x = delwt, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+gaweeks = df_birthweight %>% 
+  ggplot(aes(x = gaweeks, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+menarche = df_birthweight %>% 
+  ggplot(aes(x = menarche, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+malform = df_birthweight %>% 
+  ggplot(aes(x = malform, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+mheight = df_birthweight %>% 
+  ggplot(aes(x = mheight * ppwt, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+ppbmi = df_birthweight %>% 
+  ggplot(aes(x = ppbmi, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+ppwt = df_birthweight %>% 
+  ggplot(aes(x = ppwt, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+smoken = df_birthweight %>% 
+  ggplot(aes(x = smoken, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+wtgain = df_birthweight %>% 
+  ggplot(aes(x = wtgain, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+momage = df_birthweight %>% 
+  ggplot(aes(x = momage, y = bwt)) +
+  geom_point() +
+  geom_smooth()
+
+```
+
+patchwork graph
+
+```{r}
+dist + 
+  plot_layout(ncol = 1) + 
+  { bhead +
+    blength +
+    malform +
+    menarche +
+    smoken +
+    babysex +
+    mheight +
+    momage +
+    ppbmi +
+    delwt +
+    gaweeks +
+    wtgain
+} + plot_layout(ncol = 2)
+
+
+(dist) /
+  (bhead + blength + malform) / 
+     (menarche + smoken +  babysex) /
+     (mheight + momage + ppbmi) / 
+     (ppbmi + delwt + gaweeks)
+
+
+((bhead + bhead) /
+   (bhead + bhead) /
+   (bhead + bhead) /
+   (bhead + bhead) /
+   (bhead + bhead))
+
+
+p4 + {
+  p1 + {
+    p2 +
+      p3 +
+      plot_layout(ncol = 1)
+  }
+} +
+  plot_layout(ncol = 1)
+```
+
+
+Load and clean the data for regression analysis (i.e. convert numeric to factor where appropriate, check for missing data, etc.).
+
+Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
+
+setup cross validation
+
+```{r}
+cv_df = 
+  crossv_mc(df_birthweight, 100)
+
+cv_df =
+  cv_df %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+create models
+
+```{r}
+my_model = 
+  mgcv::gam(bwt ~ 
+              s(blength, bhead, babysex, delwt, gaweeks, mheight * ppwt, ppbmi), 
+            data = df_birthweight)
+
+# my_model = lm(bwt ~ bhead + blength + babysex + bhead * blength, bhead * babysex + blength * babysex + bhead * blength * babysex, data = df_birthweight)
+# 
+# my_model = 
+#   mgcv::gam(bwt ~ 
+#         s(blength, bhead, babysex, delwt, gaweeks, mheight * ppwt, ppbmi, k = 10),
+#       sp = 10e-2,
+#       data = df_birthweight)
+
+cv_df %>%
+  pull(train) %>% 
+  .[[1]] %>%
+  as_tibble %>% 
+  mutate(id = seq.int(nrow(.))) %>%
+  add_predictions(my_model) %>% 
+  add_residuals(my_model) %>% 
+  ggplot(aes(x = pred, y = resid)) + geom_point()
+```
+
+
+```{r}
+
+lm(bwt ~ blength, gaweeks, data = df_birthweight) %>% 
+  broom::tidy()
+
+lm(bwt ~ bhead + blength + babysex + bhead*blength, data = df_birthweight) %>% broom::tidy()
+
+lm(bwt ~ bhead, blength, babysex, bhead * blength, bhead * babysex, blength * babysex, bhead * blength * babysex, data = df_birthweight)
+
+
+cv_df = 
+  cv_df %>% 
+  mutate(
+    mod_len_ga = 
+      map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+    mod_interactions = 
+      map(train, 
+          ~lm(bwt ~ 
+                bhead + 
+                blength + 
+                babysex +
+                bhead * blength +
+                bhead * babysex +
+                blength * babysex +
+                bhead * blength * babysex,
+              data = .x)),
+    my_model =
+      map(train,
+          ~lm(bwt ~
+                bhead +
+                blength +
+                malform +
+                menarche +
+                babysex +
+                mheight * ppwt +
+                smoken +
+                momage +
+                ppbmi +
+                delwt +
+                gaweeks +
+                wtgain,
+              data = .x)),
+    my_model_2 = 
+      map(train,
+          ~lm(bwt ~ blength + bhead + babysex + delwt + gaweeks + mheight * ppwt + ppbmi, data = .x))
+  ) %>% 
+  mutate(
+    rmse_len_ga = map2_dbl(mod_len_ga, test, ~rmse(model = .x, data = .y)),
+    rmse_interactions = map2_dbl(mod_interactions, test, ~rmse(model = .x, data = .y)),
+    rmse_my_model = map2_dbl(my_model, test, ~rmse(model = .x, data = .y)),
+    rmse_my_model_2 = map2_dbl(my_model_2, test, ~rmse(model = .x, data = .y))
+  )
+```
+
+plot model performance
+
+```{r}
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+
+
+
+## Problem 2
+
+For this problem, we’ll use the 2017 Central Park weather data that we’ve seen elsewhere. The code chunk below (adapted from the course website) will download these data.
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+The boostrap is helpful when you’d like to perform inference for a parameter / value / summary that doesn’t have an easy-to-write-down distribution in the usual repeated sampling framework. We’ll focus on a simple linear regression with tmax as the response and tmin as the predictor, and are interested in the distribution of two quantities estimated from these data:
+
+    r^2
+    log(β^0∗β^1)
+
+Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words. Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r^2
+and log(β^0∗β^1). Note: broom::glance() is helpful for extracting r^2 from a fitted regression, and broom::tidy() (with some additional wrangling) should help in computing log(β^0∗β^1).
+
